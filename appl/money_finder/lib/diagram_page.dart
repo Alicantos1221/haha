@@ -2,7 +2,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'database_helper.dart';
-import 'package:intl/intl.dart';
 import 'dart:math';
 
 class DiagramPage extends StatefulWidget {
@@ -10,43 +9,54 @@ class DiagramPage extends StatefulWidget {
   _DiagramPageState createState() => _DiagramPageState();
 }
 
-class _DiagramPageState extends State<DiagramPage> {
+class _DiagramPageState extends State<DiagramPage> with SingleTickerProviderStateMixin {
   String currentMonth = '2025-03';
   double totalIncome = 0;
   double totalExpense = 0;
   double balance = 0;
   Map<String, double> categoryExpenses = {};
+  Map<String, double> categoryIncomes = {};
   List<Map<String, dynamic>> incomeList = [];
   List<Map<String, dynamic>> expenseList = [];
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   // Загружаем данные о доходах и расходах за месяц
   _loadData() async {
-    // Сначала сбрасываем все значения
+    totalIncome = 0;
     totalExpense = 0;
     categoryExpenses.clear();
-    incomeList.clear();
-    expenseList.clear();
+    categoryIncomes.clear();
 
-    // Загружаем доходы и расходы для текущего месяца
     var incomes = await DatabaseHelper().getIncomeByMonth(currentMonth);
     var expenses = await DatabaseHelper().getExpenseByMonth(currentMonth);
 
     double income = 0;
+    Map<String, double> incomeCategories = {};
     Map<String, double> expenseCategories = {};
 
-    // Подсчитываем доходы и добавляем в список
     for (var row in incomes) {
       income += row['amount'];
-      incomeList.add(row); // Добавляем доход в список
+      String category = row['category'] ?? 'Без категории';
+      if (incomeCategories.containsKey(category)) {
+        incomeCategories[category] = incomeCategories[category]! + row['amount'];
+      } else {
+        incomeCategories[category] = row['amount'];
+      }
     }
 
-    // Подсчитываем расходы и добавляем в список
     for (var row in expenses) {
       totalExpense += row['amount'];
       String category = row['category'];
@@ -55,31 +65,27 @@ class _DiagramPageState extends State<DiagramPage> {
       } else {
         expenseCategories[category] = row['amount'];
       }
-      expenseList.add(row); // Добавляем расход в список
     }
 
-    // Обновляем состояние после загрузки данных
     setState(() {
       totalIncome = income;
       balance = totalIncome - totalExpense;
       categoryExpenses = expenseCategories;
+      categoryIncomes = incomeCategories;
+      incomeList = incomes;
+      expenseList = expenses;
     });
   }
 
   // Смена месяца
   _changeMonth(int delta) {
-    // Добавляем "01" как день в текущий месяц
-    final currentDate = DateTime.parse('$currentMonth-01'); // Теперь дата в формате 'yyyy-MM-dd'
-
-    // Изменяем месяц с учетом перехода через год
+    final currentDate = DateTime.parse('$currentMonth-01');
     final newMonth = currentDate.month + delta;
     final newYear = currentDate.year + (newMonth > 12 ? 1 : (newMonth < 1 ? -1 : 0));
-    final correctedMonth = ((newMonth - 1) % 12 + 12) % 12 + 1; // Это гарантирует, что месяц всегда в диапазоне от 1 до 12
-
-    final newDate = DateTime(newYear, correctedMonth, 1); // Устанавливаем день как 1
+    final correctedMonth = ((newMonth - 1) % 12 + 12) % 12 + 1;
 
     setState(() {
-      currentMonth = '${newDate.year}-${newDate.month.toString().padLeft(2, '0')}';
+      currentMonth = '${newYear}-${correctedMonth.toString().padLeft(2, '0')}';
     });
     _loadData();
   }
@@ -101,13 +107,13 @@ class _DiagramPageState extends State<DiagramPage> {
           CupertinoDialogAction(
             child: Text('Отмена'),
             onPressed: () {
-              Navigator.pop(context, false); // Отменить удаление
+              Navigator.pop(context, false);
             },
           ),
           CupertinoDialogAction(
             child: Text('Удалить'),
             onPressed: () {
-              Navigator.pop(context, true); // Подтвердить удаление
+              Navigator.pop(context, true);
             },
           ),
         ],
@@ -120,13 +126,32 @@ class _DiagramPageState extends State<DiagramPage> {
       } else if (type == 'Расход') {
         await DatabaseHelper().deleteExpense(id);
       }
-      _loadData(); // Обновляем данные после удаления
+      _loadData();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Статистика'),
+            Text(
+              'Баланс: ${balance.toStringAsFixed(2)} Руб.',
+              style: TextStyle(fontSize: 16),
+            ),
+          ],
+        ),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(text: 'Расходы'),
+            Tab(text: 'Доходы'),
+          ],
+        ),
+      ),
       body: Column(
         children: [
           // Выбор месяца
@@ -147,76 +172,88 @@ class _DiagramPageState extends State<DiagramPage> {
               ),
             ],
           ),
-
-          // Отображение статистики
-          Text('Доходы: \$${totalIncome.toStringAsFixed(2)}'),
-          Text('Расходы: \$${totalExpense.toStringAsFixed(2)}'),
-          Text('Баланс: \$${balance.toStringAsFixed(2)}'),
-
-          // Диаграмма расходов по категориям
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: SizedBox(
-              height: 200,
-              child: PieChart(
-                PieChartData(
-                  sections: categoryExpenses.entries.map((entry) {
-                    return PieChartSectionData(
-                      value: entry.value,
-                      title: entry.key,
-                      color: _generateRandomColor(), // Генерация случайного цвета для каждой категории
-                      radius: 50,
-                      titleStyle: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
-                    );
-                  }).toList(),
-                ),
-              ),
-            ),
-          ),
-
-          // Список доходов
           Expanded(
-            child: ListView(
+            child: TabBarView(
+              controller: _tabController,
               children: [
-                // Секция доходов
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Text(
-                    'Доходы:',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
+                // Расходы
+                Column(
+                  children: [
+                    Text('Общие расходы: ${totalExpense.toStringAsFixed(2)} Руб.'),
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: SizedBox(
+                        height: 200,
+                        child: PieChart(
+                          PieChartData(
+                            sections: categoryExpenses.entries.map((entry) {
+                              return PieChartSectionData(
+                                value: entry.value,
+                                title: entry.key,
+                                color: _generateRandomColor(),
+                                radius: 50,
+                                titleStyle: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: const Color.fromARGB(255, 255, 255, 255)),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView(
+                        children: expenseList.map((expense) {
+                          return ListTile(
+                            title: Text('Сумма: ${expense['amount']} Руб.'),
+                            subtitle: Text('Категория: ${expense['category']}\nКомментарий: ${expense['coment'] ?? "Нет"}'),
+                            trailing: Text(expense['date']),
+                            onLongPress: () {
+                              _deleteRecord(context, 'Расход', expense['id']);
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
                 ),
-                ...incomeList.map((income) {
-                  return ListTile(
-                    title: Text('Сумма: \$${income['amount']}'),
-                    subtitle: Text('Категория: ${income['category']}'),
-                    trailing: Text(income['date']),
-                    onLongPress: () {
-                      // Удаление записи о доходе
-                      _deleteRecord(context, 'Доход', income['id']);
-                    },
-                  );
-                }).toList(),
-
-                // Секция расходов
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Text(
-                    'Расходы:',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
+                // Доходы
+                Column(
+                  children: [
+                    Text('Общие доходы: ${totalIncome.toStringAsFixed(2)} Руб.'),
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: SizedBox(
+                        height: 200,
+                        child: PieChart(
+                          PieChartData(
+                            sections: categoryIncomes.entries.map((entry) {
+                              return PieChartSectionData(
+                                value: entry.value,
+                                title: entry.key,
+                                color: _generateRandomColor(),
+                                radius: 50,
+                                titleStyle: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView(
+                        children: incomeList.map((income) {
+                          return ListTile(
+                            title: Text('Сумма: ${income['amount']} Руб.'),
+                            subtitle: Text('Категория: ${income['category']}\nКомментарий: ${income['coment'] ?? "Нет"}'),
+                            trailing: Text(income['date']),
+                            onLongPress: () {
+                              _deleteRecord(context, 'Доход', income['id']);
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
                 ),
-                ...expenseList.map((expense) {
-                  return ListTile(
-                    title: Text('Сумма: \$${expense['amount']}'),
-                    subtitle: Text('Категория: ${expense['category']}'),
-                    trailing: Text(expense['date']),
-                    onLongPress: () {
-                      // Удаление записи о расходе
-                      _deleteRecord(context, 'Расход', expense['id']);
-                    },
-                  );
-                }).toList(),
               ],
             ),
           ),

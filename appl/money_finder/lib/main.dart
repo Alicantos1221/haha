@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'diagram_page.dart';
 import 'add_page.dart';
 
 void main() {
+   debugPaintSizeEnabled = false;
   runApp(MyApp());
 }
 
@@ -43,8 +45,9 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Статистика'),
-        centerTitle: true,  // Вместо Center, это автоматически выровняет заголовок по центру
+        title: Text('Учет расходов'),
+        centerTitle: true,
+        backgroundColor: Color.fromARGB(255, 226, 226, 226),  // Вместо Center, это автоматически выровняет заголовок по центру
       ),
       body: _pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
