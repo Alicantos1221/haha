@@ -20,26 +20,58 @@ class DatabaseHelper {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'app_database.db');
 
-    return openDatabase(
+    final db = await openDatabase(
       path,
-      version: 1,
-      onCreate: (db, version) {
-        return db.execute(''' 
-          CREATE TABLE income (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            amount REAL,
-            date TEXT,
-            category TEXT
-          );
-          CREATE TABLE expense (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            amount REAL,
-            date TEXT,
-            category TEXT
-          );
-        ''');
+      version: 1, // Установим версию базы данных
+      onCreate: (db, version) async {
+        // При создании базы данных создаем таблицы
+        await _createTables(db);
       },
     );
+
+    // Проверка наличия таблиц после создания базы данных
+    await _checkTables(db);
+
+    return db;
+  }
+
+  // Создание таблиц, если они не существуют
+  Future<void> _createTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS income (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        amount REAL,
+        date TEXT,
+        category TEXT
+      );
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS expense (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        amount REAL,
+        date TEXT,
+        category TEXT
+      );
+    ''');
+  }
+
+  // Проверка таблиц в базе данных
+  Future<void> _checkTables(Database db) async {
+    List<Map<String, dynamic>> result = await db.rawQuery('SELECT name FROM sqlite_master WHERE type="table";');
+
+    print('Tables in database:');
+    for (var row in result) {
+      print(row['name']);
+    }
+
+    // Проверяем, что таблицы "income" и "expense" существуют
+    if (!result.any((row) => row['name'] == 'income')) {
+      print('Income table not found!');
+    }
+    if (!result.any((row) => row['name'] == 'expense')) {
+      print('Expense table not found!');
+    }
   }
 
   Future<int> insertIncome(double amount, String date, String category) async {
@@ -53,14 +85,31 @@ class DatabaseHelper {
   }
 
   Future<List<Map<String, dynamic>>> getIncomeByMonth(String month) async {
-    final db = await database;
-    return db.query('income', where: 'date LIKE ?', whereArgs: ['%$month%']);
-  }
+  final db = await database;
+  
+  // Преобразуем месяц в формат 'YYYY-MM' (например, '2025-03')
+  String formattedMonth = month.substring(0, 7);  // Получаем первые 7 символов 'YYYY-MM'
+  
+  return db.query(
+    'income',
+    where: 'date LIKE ?',
+    whereArgs: ['$formattedMonth%'],  // Фильтруем только по месяцам
+  );
+}
 
-  Future<List<Map<String, dynamic>>> getExpenseByMonth(String month) async {
-    final db = await database;
-    return db.query('expense', where: 'date LIKE ?', whereArgs: ['%$month%']);
-  }
+Future<List<Map<String, dynamic>>> getExpenseByMonth(String month) async {
+  final db = await database;
+  
+  // Преобразуем месяц в формат 'YYYY-MM' (например, '2025-03')
+  String formattedMonth = month.substring(0, 7);  // Получаем первые 7 символов 'YYYY-MM'
+  
+  return db.query(
+    'expense',
+    where: 'date LIKE ?',
+    whereArgs: ['$formattedMonth%'],  // Фильтруем только по месяцам
+  );
+}
+
 
   Future<int> deleteIncome(int id) async {
     final db = await database;

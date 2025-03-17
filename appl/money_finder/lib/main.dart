@@ -1,4 +1,3 @@
-// main.dart
 import 'package:flutter/material.dart';
 import 'diagram_page.dart';
 import 'add_page.dart';
@@ -44,13 +43,14 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Center(child: Text('Статистика')),
+        title: Text('Статистика'),
+        centerTitle: true,  // Вместо Center, это автоматически выровняет заголовок по центру
       ),
       body: _pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
-        items: [
+        items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home),
             label: 'Диаграмма',
